@@ -4,7 +4,8 @@ import numpy as np
 import math
 from scipy.linalg import sqrtm
 from load_data import load_data, load_optimization_info
-
+import pandas as pd
+import utils
 
 def set_axes_equal(ax):
     '''Make axes of 3D plot have equal scale so that spheres appear as spheres,
@@ -68,19 +69,23 @@ def visualize_protected_vs_unprotected(data, protected_info, class_label, title)
 def visualize_positive_vs_negative(data, protected_info, class_label, title):
     positive_class_data = data.iloc[np.where(class_label == 1)[0]]
     negative_class_data = data.iloc[np.where(class_label == 0)[0]]
+    # negative_class_and_discriminated = data.iloc[discriminated_instances]
 
-    protected_positive_class = protected_info[np.where(class_label == 1)[0]]
-    protected_negative_class = protected_info[np.where(class_label == 0)[0]]
+    protected_positive_class_info = protected_info[np.where(class_label == 1)[0]]
+    protected_negative_class_info = protected_info[np.where(class_label == 0)[0]]
+
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
     cmap_decision = matplotlib.colors.ListedColormap(['indianred', 'navy'])
 
-    ax.scatter(positive_class_data.iloc[:,0], positive_class_data.iloc[:,1], positive_class_data.iloc[:,2], c=protected_positive_class, cmap=cmap_decision,
+    ax.scatter(positive_class_data.iloc[:,0], positive_class_data.iloc[:,1], positive_class_data.iloc[:,2], c=protected_positive_class_info, cmap=cmap_decision,
                marker='+',alpha=0.2)
-    ax.scatter(negative_class_data.iloc[:,0], negative_class_data.iloc[:,1], negative_class_data.iloc[:,2], c=protected_negative_class,
+    ax.scatter(negative_class_data.iloc[:,0], negative_class_data.iloc[:,1], negative_class_data.iloc[:,2], c=protected_negative_class_info,
                cmap=cmap_decision, marker='_', alpha=0.2)
+    # ax.scatter(negative_class_and_discriminated.iloc[:,0], negative_class_and_discriminated.iloc[:, 1], negative_class_and_discriminated.iloc[:,2],
+    #            c='black', marker='_', alpha=1)
 
     markers = ["+", "_"]
     colors = ['indianred', 'blue']
@@ -140,17 +145,6 @@ def visualize(data, protected_info, class_label, title):
     plt.show()
     return
 
-
-def project_to_weighted_euclidean(data, weights):
-    for i in range(len(weights)):
-        data.iloc[:,i] = data.iloc[:,i] * math.sqrt(weights[i])
-    return data
-
-
-def project_to_mahalanobis(data, mahalanobis_matrix):
-    return data.dot(mahalanobis_matrix)
-
-
 def visualize_baseline(data_location, title):
     data_dict = load_data(data_location, "train")
 
@@ -158,8 +152,9 @@ def visualize_baseline(data_location, title):
     print(data)
     protected_info = data_dict['protected_info']
     class_label = data_dict['class_label']
+    discriminated_instances = data_dict['discriminated_instances']
 
-    visualize_positive_vs_negative(data, protected_info, class_label, title)
+    visualize_positive_vs_negative(data, protected_info, class_label, discriminated_instances, title)
 
 def visualize_luong(data_location, title):
     data_dict = load_data(data_location, "train")
@@ -167,26 +162,25 @@ def visualize_luong(data_location, title):
     standardized_data = data_dict['standardized_data']
     protected_info = data_dict['protected_info']
     class_label = data_dict['class_label']
+    discriminated_instances = data_dict['discriminated_instances']
 
-    visualize_positive_vs_negative(standardized_data, protected_info, class_label, title)
+
+    visualize_positive_vs_negative(standardized_data, protected_info, class_label, discriminated_instances, title)
 
 
 def visualize_euclidean(data_location, title):
     data_dict = load_data(data_location, "train")
-    loaded_optimization_info = load_optimization_info(data_location)
+    loaded_optimization_info = load_optimization_info(data_location, lambda_l1_norm_euclidean=0.2, lambda_l1_norm_mahalanobis=0.2)
     standardized_data = data_dict['standardized_data']
     protected_info = data_dict['protected_info']
     class_label = data_dict['class_label']
+    discriminated_instances = data_dict['discriminated_instances']
 
     weights_euclidean = loaded_optimization_info['weights_euclidean']
 
-    projected_data = project_to_weighted_euclidean(standardized_data, weights_euclidean)
+    projected_data = utils.project_to_weighted_euclidean(standardized_data, weights_euclidean)
 
-    #visualize(projected_data, protected_info, class_label, title)
-
-    #visualize_protected_vs_unprotected(projected_data, protected_info, class_label, title)
-    visualize_positive_vs_negative(projected_data, protected_info, class_label, title)
-
+    visualize_positive_vs_negative(projected_data, protected_info, class_label, discriminated_instances, title)
 
 
 def mahalanobis_distance(x, y, weight_array):
@@ -207,33 +201,19 @@ def euclidean_distance(x, y):
     return math.sqrt(sum_of_distances)
 
 
-def visualize_mahalanobis(load_function):
-    data_dict = load_function()
+def visualize_mahalanobis(data_location, lambda_l1_norm, title):
+    data_dict = load_data(data_location, "train")
+    loaded_optimization_info = load_optimization_info(data_location, lambda_l1_norm_euclidean=0.2, lambda_l1_norm_mahalanobis=lambda_l1_norm)
+    mahalanobis_matrix = loaded_optimization_info['mahalanobis_matrix']
     standardized_data = data_dict['standardized_data']
     protected_info = data_dict['protected_info']
-    mahalanobis_array = np.array([0.05,0.01,0.01,0.01,
-                                  0.01,0.05,0.01,0.01,
-                                  0.01,0.01,5.28380237,0.0497745,
-                                  0.01,0.01,0.0497745, 1.27928691])
-    mahalanobis_matrix = mahalanobis_array.reshape(standardized_data.shape[1], standardized_data.shape[1])
+    class_label = data_dict['class_label']
+    discriminated_instances = data_dict['discriminated_instances']
+    # mahalanobis_array = loaded_optimization_info['mahalanobis_matrix']
 
 
-    x = np.array([2, 4, 6, 5])
-    y = np.array([1, 3, 7, 2])
-
-
-    L = np.linalg.cholesky(mahalanobis_matrix)
-    print(L)
-    x_projected = mahalanobis_matrix.dot(L)
-    print(x_projected)
-    y_projected = y.dot(L)
-    print(y_projected)
-    print(euclidean_distance(x_projected, y_projected))
-    # class_label = data_dict['class_label']
-    #
-    #
-    # projected_data = project_to_mahalanobis(standardized_data, mahalanobis_matrix)
-    # visualize(projected_data, protected_info, class_label)
+    projected_data = utils.project_to_mahalanobis(standardized_data, mahalanobis_matrix)
+    visualize_positive_vs_negative(projected_data, protected_info, class_label, title)
 
 
 

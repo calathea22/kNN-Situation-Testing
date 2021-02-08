@@ -12,7 +12,7 @@ def make_model_admission(data):
     model = c.estimate(significance_level=0.05)
     bayesian_model = BayesianModel(model.edges)
     print(bayesian_model.edges)
-    bayesian_model = BayesianModel([('Extra Curricular', 'Admission'), ('Score', 'Admission'), ('Gender', 'Admission'), ('Gender', 'Height')])
+    bayesian_model = BayesianModel([('Extra Curricular', 'Admission'), ('Gender', 'Extra Curricular'), ('Score', 'Admission'), ('Gender', 'Admission'), ('Gender', 'Height')])
     return bayesian_model
 
 
@@ -152,16 +152,13 @@ def disc_score_one_instance(k, ordered_value_assignments, sens_attribute, dec_at
         number_of_neighbours += neighbours_to_be_selected
         index += 1
 
-
     p1 = sum(unprotected_nearest_neighbours_lables)/k
-
     p2 = sum(protected_nearest_neighbours_labels)/k
 
     return p1-p2
 
 
-def give_discrimination_scores_zhang(sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_label, unprotected_label):
-    model = make_model_admission(train_data)
+def give_discrimination_scores_zhang(model, sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_label, unprotected_label):
     model.fit(train_data, estimator=BayesianEstimator)
     cpd_decision = model.get_cpds(decision_attribute)
     cpd_sens = model.get_cpds(sens_attribute)
