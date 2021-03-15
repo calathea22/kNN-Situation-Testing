@@ -56,21 +56,33 @@ def calc_distances_within_and_between_classes(labels, data, weights, indices_inf
     return (dist_diff_classes, dist_same_classes)
 
 
-def get_instances_with_same_and_different_class_label(labels, data, indices_info):
+def get_abs_difference_between_instances_with_same_and_different_class_label(labels, data, indices_info):
     same_classes = []
     different_classes = []
 
     for i in range(0, len(labels)):
         for j in range(i + 1, len(labels)):
             if labels[i] != labels[j]:
-                different_classes.append(give_difference_vector_between_instances(data[i], data[j], indices_info))
+                different_classes.append(give_abs_difference_vector_between_instances(data[i], data[j], indices_info))
             else:
-                same_classes.append(give_difference_vector_between_instances(data[i], data[j], indices_info))
+                same_classes.append(give_abs_difference_vector_between_instances(data[i], data[j], indices_info))
     return(same_classes, different_classes)
 
 
+def get_non_abs_difference_between_instances_with_same_and_different_class_label(labels, data, indices_info):
+    same_classes = []
+    different_classes = []
 
-def give_difference_vector_between_instances(x, y, indices_info):
+    for i in range(0, len(labels)):
+        for j in range(i + 1, len(labels)):
+            if labels[i] != labels[j]:
+                different_classes.append(give_non_abs_difference_vector_between_instances(data[i], data[j], indices_info))
+            else:
+                same_classes.append(give_non_abs_difference_vector_between_instances(data[i], data[j], indices_info))
+    return(same_classes, different_classes)
+
+
+def give_abs_difference_vector_between_instances(x, y, indices_info):
     interval_indices = indices_info['interval']
     ordinal_indices = indices_info['ordinal']
 
@@ -78,6 +90,19 @@ def give_difference_vector_between_instances(x, y, indices_info):
     for index in range(0, len(x)):
         if index in interval_indices or index in ordinal_indices:
             difference_vector.append(abs(x[index]-y[index]))
+        else:
+            difference_vector.append(x[index] != y[index])
+    return np.array(difference_vector)
+
+
+def give_non_abs_difference_vector_between_instances(x, y, indices_info):
+    interval_indices = indices_info['interval']
+    ordinal_indices = indices_info['ordinal']
+
+    difference_vector = []
+    for index in range(0, len(x)):
+        if index in interval_indices or index in ordinal_indices:
+            difference_vector.append(x[index]-y[index])
         else:
             difference_vector.append(x[index] != y[index])
     return np.array(difference_vector)

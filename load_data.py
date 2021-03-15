@@ -13,18 +13,25 @@ def load_data(location, train_test_or_val):
         parent_path + location + "/"+train_test_or_val+"/class_label.xlsx")
     protected_info = pd.read_excel(
         parent_path + location + "/"+train_test_or_val+"/protected_attribute.xlsx")
+
+
+    data = data.drop('Unnamed: 0', axis='columns')
+    class_label = class_label.drop('Unnamed: 0', axis='columns')[0]
+    standardized_data = standardized_data.drop('Unnamed: 0', axis='columns')
+    protected_info = np.array(protected_info.drop('Unnamed: 0', axis='columns'))
+
+    # if (location == "adult"):
+    #     return {'data': data, 'standardized_data': standardized_data, 'protected_info': protected_info,
+    #             'class_label': class_label}
+
     discriminated_instances = pd.read_excel(
         parent_path + location + "/"+train_test_or_val+"/discriminated_instances.xlsx")
     disc_free_class_labels = pd.read_excel(
         parent_path + location + "/"+train_test_or_val+"/disc_free_labels.xlsx")
-
-    data = data.drop('Unnamed: 0', axis='columns')
-    class_label = class_label.drop('Unnamed: 0', axis='columns')[0]
-    disc_free_class_labels = disc_free_class_labels.drop('Unnamed: 0', axis='columns')[0]
-    standardized_data = standardized_data.drop('Unnamed: 0', axis='columns')
-    protected_info = np.array(protected_info.drop('Unnamed: 0', axis='columns'))
-    discriminated_instances = discriminated_instances.drop('Unnamed: 0', axis='columns')[0]
     protected_indices = list(np.where(protected_info == 1)[0])
+
+    disc_free_class_labels = disc_free_class_labels.drop('Unnamed: 0', axis='columns')[0]
+    discriminated_instances = discriminated_instances.drop('Unnamed: 0', axis='columns')[0]
     ground_truth_all_labels = utils.discriminated_instances_to_label_array(protected_indices,
                                                                             discriminated_instances)
 
@@ -35,9 +42,9 @@ def load_data(location, train_test_or_val):
 
 def load_optimization_info(location, lambda_l1_norm_euclidean, lambda_l1_norm_mahalanobis):
     weights_euclidean = pd.read_excel(
-        parent_path + location + "/lambda = " + format(lambda_l1_norm_euclidean, ".2f") + "/euclidean_weights.xlsx")
+        parent_path + location + "/lambda = " + format(lambda_l1_norm_euclidean, ".3f") + "/euclidean_weights.xlsx")
     mahalanobis_matrix = pd.read_excel(
-        parent_path + location + "/lambda = " + format(lambda_l1_norm_mahalanobis, ".2f") + "/mahalanobis_matrix.xlsx")
+        parent_path + location + "/lambda = " + format(lambda_l1_norm_mahalanobis, ".3f") + "/mahalanobis_matrix.xlsx")
 
     weights_euclidean = weights_euclidean.drop('Unnamed: 0', axis='columns')[0]
     mahalanobis_matrix = mahalanobis_matrix.drop('Unnamed: 0', axis='columns').to_numpy()

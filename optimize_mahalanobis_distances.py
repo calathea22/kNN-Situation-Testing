@@ -1,35 +1,33 @@
 import numpy as np
 from scipy.optimize import minimize
 import math
-from optimize_distances_utils import calc_distances_within_and_between_classes, get_instances_with_same_and_different_class_label, \
-    give_difference_vector_between_instances
+from optimize_distances_utils import calc_distances_within_and_between_classes, get_abs_difference_between_instances_with_same_and_different_class_label, \
+    give_abs_difference_vector_between_instances, give_non_abs_difference_vector_between_instances, get_non_abs_difference_between_instances_with_same_and_different_class_label
 from optimize_distances_utils import SDProject, metric_to_linear
 from sklearn.utils.validation import check_X_y, check_array
 from numpy.linalg import norm, cholesky
 
 
 #This function gives the mahalanobis distance between two instances x and y
-def mahalanobis_distance(x, y, weight_matrix, indices_info):
+def mahalanobis_distance(x, y, weights, indices_info):
     # weight_matrix = np.reshape(weight_array, (len(x), len(x)))
-    abs_difference = give_difference_vector_between_instances(x, y, indices_info)
-    transposed_difference = np.transpose(abs_difference)
-    dot_product1 = np.matmul(transposed_difference, weight_matrix)
-    distance = np.matmul(dot_product1, abs_difference)
+    difference = give_non_abs_difference_vector_between_instances(x, y, indices_info)
+    transposed_difference = np.transpose(difference)
+    dot_product1 = np.matmul(transposed_difference, weights)
+    distance = np.matmul(dot_product1, difference)
     if (distance - 0.0 < 1e-9):
         return 0.0
     return math.sqrt(distance)
     # return math.sqrt(np.matmul(dot_product1, abs_difference))
 
 
-def mahalanobis_distance_given_abs_diff(abs_diff, weight_matrix):
-    # weight_matrix = np.reshape(weightarray, (len(abs_diff), len(abs_diff)))
-    transposed_difference = np.transpose(abs_diff)
+def mahalanobis_distance_given_diff(diff, weight_matrix):
+    transposed_difference = np.transpose(diff)
     dot_product1 = np.matmul(transposed_difference, weight_matrix)
-    distance = np.matmul(dot_product1, abs_diff)
+    distance = np.matmul(dot_product1, diff)
     if (distance - 0.0 < 1e-9):
         return 0.0
     return math.sqrt(distance)
-    # return math.sqrt(np.matmul(dot_product1, abs_diff))
 
 
 def objective_mahalanobis(weights, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm):
@@ -39,50 +37,60 @@ def objective_mahalanobis(weights, protected_data, unprotected_data, protected_l
     unprot_dist_diff, unprot_dist_same = calc_distances_within_and_between_classes(unprotected_labels, unprotected_data,
                                                                                    weights, indices_info,
                                                                                    mahalanobis_distance)
-    dist_same_classes = prot_dist_same + unprot_dist_same
-    dist_diff_classes = prot_dist_diff + unprot_dist_diff
 
-    mean_dist_same = sum(dist_same_classes) / len(dist_same_classes)
-    mean_dist_diff = sum(dist_diff_classes) / len(dist_diff_classes)
+    mean_prot_dist_diff = sum(prot_dist_diff) / len(prot_dist_diff)
+    mean_prot_dist_same = sum(prot_dist_same) / len(prot_dist_same)
 
-    l1_norm = lambda_l1_norm * sum(sum(weights))
+    mean_unprot_dist_diff = sum(unprot_dist_diff) / len(unprot_dist_diff)
+    mean_unprot_dist_same = sum(unprot_dist_same) / len(unprot_dist_same)
+
+    l1_norm = lambda_l1_norm * sum(sum(abs(weights)))
+    sum_of_mean_of_dist_diffs = mean_prot_dist_diff + mean_unprot_dist_diff
+    sum_of_mean_of_dist_same = mean_prot_dist_same + mean_unprot_dist_same
 
     print(weights)
-    print(-(mean_dist_same - mean_dist_diff+l1_norm))
-    return -(mean_dist_same - mean_dist_diff+l1_norm)
+    print(-(sum_of_mean_of_dist_same - sum_of_mean_of_dist_diffs + l1_norm))
+
+    return -(sum_of_mean_of_dist_same - sum_of_mean_of_dist_diffs + l1_norm)
 
 
-def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_group, weightarray):
+def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_group, weightarray, lambda_l1_norm):
     derivative_vector = []
     for i in range(number_of_attributes):
         for j in range(number_of_attributes):
             sum_of_elements = 0
             for element in range(len(label_group)):
-                mahalanobis_distance = mahalanobis_distance_given_abs_diff(label_group[element], weightarray)
+                mahalanobis_distance = mahalanobis_distance_given_diff(label_group[element], weightarray)
                 if mahalanobis_distance != 0:
                     sum_of_elements += ((1/(2*mahalanobis_distance)) * label_group[element][i] * label_group[element][j])
-            derivative_vector.append(sum_of_elements)
+            if(weightarray[i][j] > 0):
+                derivative_vector.append(sum_of_elements + lambda_l1_norm)
+            else:
+                derivative_vector.append(sum_of_elements - lambda_l1_norm)
     return derivative_vector
 
 
 def mahalanobis_derivative(weights, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm):
-    prot_same, prot_diff = get_instances_with_same_and_different_class_label(protected_labels, protected_data, indices_info)
-    unprot_same, unprot_diff = get_instances_with_same_and_different_class_label(unprotected_labels, unprotected_data, indices_info)
+    prot_same, prot_diff = get_non_abs_difference_between_instances_with_same_and_different_class_label(protected_labels, protected_data, indices_info)
+    unprot_same, unprot_diff = get_non_abs_difference_between_instances_with_same_and_different_class_label(unprotected_labels, unprotected_data, indices_info)
 
-    number_of_same = len(prot_same) + len(unprot_same)
-    number_of_different = len(prot_diff) + len(unprot_diff)
+    derivative_prot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_same, weights, lambda_l1_norm))
+    derivative_prot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_diff, weights, lambda_l1_norm))
+    derivative_unprot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_same, weights, lambda_l1_norm))
+    derivative_unprot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_diff, weights, lambda_l1_norm))
 
-    derivative_prot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_same, weights))
-    derivative_prot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_diff, weights))
-    derivative_unprot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_same, weights))
-    derivative_unprot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_diff, weights))
+    derivative_prot_same = 1/(len(prot_same)) * derivative_prot_same
+    derivative_prot_diff = 1/(len(prot_diff)) * derivative_prot_diff
+    derivative_unprot_same = 1/(len(unprot_same)) * derivative_unprot_same
+    derivative_unprot_diff = 1/(len(unprot_diff)) * derivative_unprot_diff
 
-    derivative_same = 1 / number_of_same * (derivative_prot_same + derivative_unprot_same)
-    derivative_diff = 1 / number_of_different * (derivative_prot_diff + derivative_unprot_diff)
+    sum_derivative_same = derivative_prot_same + derivative_unprot_same
+    sum_derivative_diff = derivative_prot_diff + derivative_unprot_diff
 
-    derivative = -(derivative_same - derivative_diff + lambda_l1_norm)
-    derivative = np.reshape(derivative, (3,3))
+    derivative = -(sum_derivative_same - sum_derivative_diff)
+    derivative = np.reshape(derivative, (len(weights), len(weights)))
     return derivative
+
 
 
 def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, protected_label, unprotected_label):

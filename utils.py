@@ -5,6 +5,7 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve
 import math
 import os
 from matplotlib import pyplot
+from scipy.spatial.distance import pdist, squareform, cdist
 
 
 def store_in_excel(matrix, path, filename):
@@ -71,16 +72,12 @@ def interval_to_z_scores_test_or_val_set(train_dataset, test_dataset, indices_in
     return standardized_data
 
 
-def get_precision_recall_auc_score(ground_truth, discrimination_score):
-    # precision, recall, thresholds = precision_recall_curve(ground_truth, discrimination_score)
-    # # print("_________________________________________________")
-    # # print(precision)
-    # # print(recall)
-    # # print(thresholds)
-    # auc_score = auc(recall, precision)
-    fpr, tpr, thresholds = roc_curve(ground_truth, discrimination_score, pos_label=1)
-    auc_score = auc(fpr, tpr)
-    return auc_score
+def get_auc_scores(ground_truth, discrimination_score):
+    precision, recall, thresholds_p_r = precision_recall_curve(ground_truth, discrimination_score)
+    auc_score_pr = auc(recall, precision)
+    fpr, tpr, thresholds_roc = roc_curve(ground_truth, discrimination_score, pos_label=1)
+    auc_score_roc = auc(fpr, tpr)
+    return auc_score_pr, auc_score_roc
 
 
 def get_roc_auc_score(ground_truth, discrimination_score):
@@ -142,6 +139,8 @@ def print_avg_results_from_dictionary(results_dictionary):
     print("Zhang: " + str(sum(zhang_results) / len(zhang_results)))
     euclidean_results = [result['euclidean'] for result in results_dictionary]
     print("Euclidean: " + str(sum(euclidean_results) / len(euclidean_results)))
+    mahalanobis_results = [result['mahalanobis'] for result in results_dictionary]
+    print("Mahalanobis: " + str(sum(mahalanobis_results) / len(mahalanobis_results)))
     return
 
 def project_to_weighted_euclidean(data, weights):
@@ -152,9 +151,10 @@ def project_to_weighted_euclidean(data, weights):
 
 def project_to_mahalanobis(data, mahalanobis_matrix):
     eigvals, eigvecs = np.linalg.eigh(mahalanobis_matrix)
+    print(eigvals)
     eigvals = eigvals.astype(float)  # Remove residual imaginary part
     eigvecs = eigvecs.astype(float)
-    eigvals[eigvals < 0.0] = 0.0  # MEJORAR ESTO (no debería hacer falta, pero está bien para errores de precisión)
+    eigvals[eigvals < 0.0] = 0.0
     sqrt_diag = np.sqrt(eigvals)
     L = eigvecs.dot(np.diag(sqrt_diag)).T
     projected_data = pd.DataFrame(data.dot(L.T))
@@ -178,3 +178,54 @@ def generate_non_discriminated_class_info(ground_truth_labels, protected_info, c
     return new_class_labels
 
 
+def remove_discrimination_from_protected_indices(discrimination_labels, biased_class_labels):
+    new_class_labels = []
+    for i in range(len(biased_class_labels)):
+        if discrimination_labels[i] == True:
+            new_class_labels.append(True)
+        else:
+            new_class_labels.append(biased_class_labels.iloc[i])
+    return new_class_labels
+
+def get_inter_and_intra_sens_distances(distances, sens_attribute, prot_label):
+    inter_prot = []
+    inter_unprot = []
+    intra = []
+    for i in range(0, len(sens_attribute)):
+        for j in range(i + 1, len(sens_attribute)):
+            if sens_attribute[i] != sens_attribute[j]:
+                intra.append(distances.iloc[i, j])
+            elif sens_attribute[i] == prot_label:
+                inter_prot.append(distances.iloc[i, j])
+            else:
+                inter_unprot.append(distances.iloc[i, j])
+
+    end_of_prot_indices = len(inter_prot)
+
+    beginning_of_unprot_indices = len(inter_prot)
+    end_of_unprot_indices = beginning_of_unprot_indices + len(inter_unprot)
+
+    beginning_of_intra_indices = end_of_unprot_indices
+
+    all_distances = inter_prot + inter_unprot + intra
+    all_distances_normalized = (all_distances - min(all_distances)) / (max(all_distances) - min(all_distances))
+
+    normalized_inter_prot = all_distances_normalized[0:end_of_prot_indices]
+    normalized_inter_unprot = all_distances_normalized[beginning_of_unprot_indices:end_of_unprot_indices]
+    normalized_intra = all_distances_normalized[beginning_of_intra_indices:len(all_distances)]
+
+    # boxplot(data=[normalized_inter_prot, normalized_inter_unprot, normalized_intra])
+    # plt.show()
+    print("Mean inter protected:")
+    print(sum(normalized_inter_prot)/len(normalized_inter_prot))
+    print("Mean inter unprotected:")
+    print(sum(normalized_inter_unprot)/len(normalized_inter_unprot))
+    print("Mean intra")
+    print(sum(normalized_intra)/len(normalized_intra))
+    return normalized_inter_prot, normalized_inter_unprot, normalized_intra
+
+
+def make_distance_matrix_based_on_distance_function(data, distance_function, weights, indices_info):
+    dists = pdist(data, distance_function, weights=weights, indices_info=indices_info)
+    distance_matrix = pd.DataFrame(squareform(dists))
+    return distance_matrix
