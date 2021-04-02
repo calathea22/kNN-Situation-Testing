@@ -10,13 +10,11 @@ from numpy.linalg import norm, cholesky
 
 #This function gives the mahalanobis distance between two instances x and y
 def squared_mahalanobis_distance(x, y, weights, indices_info):
-    # weight_matrix = np.reshape(weight_array, (len(x), len(x)))
     difference = give_non_abs_difference_vector_between_instances(x, y, indices_info)
     transposed_difference = np.transpose(difference)
     dot_product1 = np.matmul(transposed_difference, weights)
     distance = np.matmul(dot_product1, difference)
     return distance
-    # return math.sqrt(np.matmul(dot_product1, abs_difference))
 
 
 def squared_mahalanobis_distance_given_diff(diff, weight_matrix):
@@ -50,7 +48,7 @@ def objective_mahalanobis(weights, protected_data, unprotected_data, protected_l
     return -(sum_of_mean_of_dist_same - sum_of_mean_of_dist_diffs + l1_norm)
 
 
-def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_group, weightarray, lambda_l1_norm):
+def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_group):
     derivative_vector = []
     for i in range(number_of_attributes):
         for j in range(number_of_attributes):
@@ -61,14 +59,14 @@ def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_grou
     return derivative_vector
 
 
-def mahalanobis_derivative(weights, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm):
+def mahalanobis_derivative(weights, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l2_norm):
     prot_same, prot_diff = get_non_abs_difference_between_instances_with_same_and_different_class_label(protected_labels, protected_data, indices_info)
     unprot_same, unprot_diff = get_non_abs_difference_between_instances_with_same_and_different_class_label(unprotected_labels, unprotected_data, indices_info)
 
-    derivative_prot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_same, weights, lambda_l1_norm))
-    derivative_prot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_diff, weights, lambda_l1_norm))
-    derivative_unprot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_same, weights, lambda_l1_norm))
-    derivative_unprot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_diff, weights, lambda_l1_norm))
+    derivative_prot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_same))
+    derivative_prot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), prot_diff))
+    derivative_unprot_same = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_same))
+    derivative_unprot_diff = np.array(make_mahalanobis_derivative_per_label_group(len(protected_data[0]), unprot_diff))
 
     derivative_prot_same = 1/(len(prot_same)) * derivative_prot_same
     derivative_prot_diff = 1/(len(prot_diff)) * derivative_prot_diff
@@ -83,12 +81,12 @@ def mahalanobis_derivative(weights, protected_data, unprotected_data, protected_
 
     for i in range(len(protected_data[0])):
         for j in range(len(protected_data[0])):
-            derivative[i][j] += 2*weights[i][j] * lambda_l1_norm
+            derivative[i][j] += 2 * weights[i][j] * lambda_l2_norm
 
     return derivative
 
 
-def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, protected_label, unprotected_label, lambda_l1_norm):
+def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, protected_label, unprotected_label, lambda_l2_norm):
     number_of_features = data.shape[1]
 
     # initialize weight matrix: ensure that it's quadratic, symmetric and psd.
@@ -109,7 +107,7 @@ def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, p
 
     # Metadata
     print(weight_matrix)
-    initial_objective = objective_mahalanobis(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm)
+    initial_objective = objective_mahalanobis(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l2_norm)
     current_objective = initial_objective
 
     last_weight_matrix = weight_matrix
@@ -122,14 +120,14 @@ def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, p
 
         ################## Gradient ascent ##################
         obj_previous = current_objective
-        current_objective = objective_mahalanobis(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm)
+        current_objective = objective_mahalanobis(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l2_norm)
         print("THIS IS THE CURRENT OBJECTIVE")
         print(current_objective)
         if (current_objective > obj_previous or num_its == 0):
             # Projection successful and improves objective function. Increase learning rate.
             eta *= 1.05
             last_weight_matrix = weight_matrix.copy()
-            grad = mahalanobis_derivative(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm)
+            grad = mahalanobis_derivative(weight_matrix, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l2_norm)
             # Take gradient step
             weight_matrix += eta * grad
 

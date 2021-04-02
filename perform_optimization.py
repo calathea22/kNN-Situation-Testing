@@ -62,18 +62,18 @@ def perform_optimization(location, simulation_function, n, test_percentage, val_
     #possible_lambdas = np.arange(0.09, 0.02, -0.02)
 
     possible_lambdas = [0.07, 0.05, 0.09]
-    for lambda_l1_norm in possible_lambdas:
-        weights_euclidean = optimize_weighted_euclidean(standardized_train_data, train_class_label, train_protected_info, indices_info, 1, 2, lambda_l1_norm)
+    for lambda_l2_norm in possible_lambdas:
+        weights_euclidean = optimize_weighted_euclidean(standardized_train_data, train_class_label, train_protected_info, indices_info, 1, 2, lambda_l2_norm)
         print(weights_euclidean)
 
         utils.store_in_excel(weights_euclidean,
-                             parent_path + location+"/lambda = " +format(lambda_l1_norm, ".3f"), "/euclidean_weights.xlsx")
+                             parent_path + location+"/lambda = " +format(lambda_l2_norm, ".3f"), "/euclidean_weights.xlsx")
 
         mahalanobis_matrix = optimize_mahalanobis(standardized_train_data, train_class_label, train_protected_info,
-                                                  indices_info, 1, 2, lambda_l1_norm)
+                                                  indices_info, 1, 2, lambda_l2_norm)
         print(mahalanobis_matrix)
         utils.store_in_excel(mahalanobis_matrix,
-                             parent_path + location + "/lambda = " +format(lambda_l1_norm, ".3f"), "/mahalanobis_matrix.xlsx")
+                             parent_path + location + "/lambda = " +format(lambda_l2_norm, ".3f"), "/mahalanobis_matrix.xlsx")
 
     return
 
@@ -100,17 +100,17 @@ def perform_optimization_from_loaded_data(location):
     train_protected_info = np.array(protected_info.drop('Unnamed: 0', axis='columns')[0])
 
     possible_lambdas = np.arange(0.4, 0.04, -0.02)
-    for lambda_l1_norm in possible_lambdas:
-        weights_euclidean = optimize_weighted_euclidean(standardized_train_data, train_class_label, train_protected_info, indices_info, 1, 2, lambda_l1_norm)
+    for lambda_l2_norm in possible_lambdas:
+        weights_euclidean = optimize_weighted_euclidean(standardized_train_data, train_class_label, train_protected_info, indices_info, 1, 2, lambda_l2_norm)
         print(weights_euclidean)
 
         utils.store_in_excel(weights_euclidean,
-                             parent_path + location+"/lambda = " +format(lambda_l1_norm, ".3f"), "/euclidean_weights.xlsx")
+                             parent_path + location+"/lambda = " +format(lambda_l2_norm, ".3f"), "/euclidean_weights.xlsx")
 
         mahalanobis_matrix = optimize_mahalanobis(standardized_train_data, train_class_label, train_protected_info,
-                                                  indices_info, 1, 2, lambda_l1_norm)
+                                                  indices_info, 1, 2, lambda_l2_norm)
         print(mahalanobis_matrix)
         utils.store_in_excel(mahalanobis_matrix,
-                             parent_path + location + "/lambda = " +format(lambda_l1_norm, ".3f"), "/mahalanobis_matrix.xlsx")
+                             parent_path + location + "/lambda = " +format(lambda_l2_norm, ".3f"), "/mahalanobis_matrix.xlsx")
 
     return
