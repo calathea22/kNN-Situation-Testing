@@ -1,5 +1,5 @@
 import numpy as np
-
+import math
 
 def metric_to_linear(M):
     """
@@ -16,9 +16,9 @@ def metric_to_linear(M):
         The matrix associated to the linear transformation that computes the same distance as M.
     """
     eigvals, eigvecs = np.linalg.eig(M)
-    eigvals = eigvals.astype(float)  # Remove residual imaginary part
+    eigvals = eigvals.astype(float)
     eigvecs = eigvecs.astype(float)
-    eigvals[eigvals < 0.0] = 0.0  # MEJORAR ESTO (no debería hacer falta, pero está bien para errores de precisión)
+    eigvals[eigvals < 0.0] = 0.0
     sqrt_diag = np.sqrt(eigvals)
     return eigvecs.dot(np.diag(sqrt_diag)).T
 
@@ -106,3 +106,31 @@ def give_non_abs_difference_vector_between_instances(x, y, indices_info):
         else:
             difference_vector.append(x[index] != y[index])
     return np.array(difference_vector)
+
+
+
+#This function gives the weighted euclidean distance between two instances x and y
+def weighted_euclidean_distance(x, y, weights, indices_info):
+    abs_diff = give_abs_difference_vector_between_instances(x, y, indices_info)
+
+    sum_of_distances = 0
+    for i in range(0, len(abs_diff)):
+        sum_of_distances += weights[i] * (abs_diff[i]**2)
+    return math.sqrt(sum_of_distances)
+
+
+#This function gives the mahalanobis distance between two instances x and y
+def mahalanobis_distance(x, y, weights, indices_info):
+    difference = give_non_abs_difference_vector_between_instances(x, y, indices_info)
+    transposed_difference = np.transpose(difference)
+    dot_product1 = np.matmul(transposed_difference, weights)
+    distance = np.matmul(dot_product1, difference)
+    if (distance - 0.0 < 1e-9):
+        return 0.0
+    return math.sqrt(distance)
+
+
+#This function gives the distance between two instances x and y as defined by Luong
+def luong_distance(x, y, indices_info, weights=None):
+    difference_vector = give_abs_difference_vector_between_instances(x, y, indices_info)
+    return sum(difference_vector)/len(difference_vector)

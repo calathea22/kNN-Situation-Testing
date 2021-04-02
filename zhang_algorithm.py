@@ -3,6 +3,8 @@ from pgmpy.models import BayesianModel
 from pgmpy.estimators import PC, BayesianEstimator
 import itertools
 from scipy.spatial.distance import pdist, squareform
+from sklearn.metrics import accuracy_score
+import numpy as np
 
 
 
@@ -21,9 +23,8 @@ def make_model_adult(data):
     # model = c.estimate(significance_level=0.05)
     # bayesian_model = BayesianModel(model.edges)
     # print(bayesian_model.edges)
-    edges = [('education.num', 'Income'), ('education.num', 'capital.loss'), ('capital.loss', 'Income'), ('capital.gain', 'Income'), ('capital.loss', 'age'), ('capital.loss', 'marital.status'), ('marital.status', 'age'),('Gender', 'Income'), ('race', 'native.country')]
+    edges = [('Gender', 'Income'), ('Gender', 'marital.status_0'), ('marital.status_0', 'Income'), ('Gender', 'workclass_1'), ('education.num', 'Income'), ('age', 'marital.status_1'), ('capital.gain', 'Income'), ('capital.gain', 'hours.per.week'), ('capital.loss', 'Income'), ('age', 'workclass_0'), ('age', 'hours.per.week'), ('native.country_1', 'education.num'), ('native.country_0', 'education.num')]
     bayesian_model = BayesianModel(edges)
-
     return bayesian_model
 
 
@@ -99,7 +100,7 @@ def value_difference(q_k, q_k_apostroph, indices_info, range_dict):
     ordinal_columns = indices_info['ordinal']
     attribute = q_k[0]
 
-    if attribute in interval_columns or q_k[0] in ordinal_columns:
+    if (attribute in interval_columns) or (attribute in ordinal_columns):
         return abs(q_k[1]-q_k_apostroph[1])/range_dict[attribute]
     else:
         return q_k[1] != q_k_apostroph[1]
@@ -135,15 +136,15 @@ def order_distances(instances_per_value_assignment, distances):
     return ordered_value_assignments
 
 #here we'll implement the while loop selecting n tuples from the ordered distances
-def disc_score_one_instance(k, ordered_value_assignments, sens_attribute, dec_attribute, protected_label, unprotected_label):
+def disc_score_one_instance(k, ordered_value_assignments, sens_attribute, dec_attribute, indices_info):
     number_of_neighbours = 0
     index = 0
     protected_nearest_neighbours_labels = []
     unprotected_nearest_neighbours_lables = []
     while(number_of_neighbours < k):
         instances = ordered_value_assignments[index]
-        protected_neighbours = instances[instances[sens_attribute] == protected_label]
-        unprotected_neighbours = instances[instances[sens_attribute] == unprotected_label]
+        protected_neighbours = instances[instances[sens_attribute] == 1]
+        unprotected_neighbours = instances[instances[sens_attribute] == 2]
         neighbours_to_be_selected = min([len(protected_neighbours), len(unprotected_neighbours), k-number_of_neighbours])
 
         protected_nearest_neighbours_labels.extend(protected_neighbours[dec_attribute].iloc[0:neighbours_to_be_selected].values)
@@ -158,34 +159,46 @@ def disc_score_one_instance(k, ordered_value_assignments, sens_attribute, dec_at
     return p1-p2
 
 
-def disc_score_one_instance_1k(k, ordered_value_assignments, sens_attribute, dec_attribute, protected_label, unprotected_label):
+def give_info_about_selected_neighbours(selected_neighbours_indeces, indices_info, org_train_data):
+    non_binned_neighbours = org_train_data.iloc[selected_neighbours_indeces]
+    for interval_column in indices_info['interval']:
+        print(interval_column)
+        print("Mean value of neighbours for this feature: " + str(non_binned_neighbours[interval_column].mean()))
+    for ordinal_column in indices_info['ordinal']:
+        print(ordinal_column)
+        print(non_binned_neighbours.groupby(ordinal_column).count())
+
+
+def disc_score_one_instance_1k(k, ordered_value_assignments, sens_attribute, dec_attribute, indices_info, org_train_data):
     number_of_neighbours = 0
     index = 0
     unprotected_nearest_neighbours_lables = []
+    indices_selected_neighbours = []
     while(number_of_neighbours < k):
         instances = ordered_value_assignments[index]
-        unprotected_neighbours = instances[instances[sens_attribute] == unprotected_label]
+        unprotected_neighbours = instances[instances[sens_attribute] == 2]
         neighbours_to_be_selected = min(k-number_of_neighbours, len(unprotected_neighbours))
 
         unprotected_nearest_neighbours_lables.extend(unprotected_neighbours[dec_attribute].iloc[0:neighbours_to_be_selected].values)
-
+        selected_neighbours = unprotected_neighbours.iloc[0:neighbours_to_be_selected]
+        indices_selected_neighbours.extend(selected_neighbours.index)
         number_of_neighbours += neighbours_to_be_selected
         index += 1
 
+    #give_info_about_selected_neighbours(indices_selected_neighbours, indices_info, org_train_data)
     p1 = sum(unprotected_nearest_neighbours_lables)/k
     # p2 = sum(protected_nearest_neighbours_labels)/k
-
     return p1
 
 
-def decision_label_one_instance_unprotected_group(k, ordered_value_assignments, sens_attribute, dec_attribute, protected_label, unprotected_label):
+def decision_label_one_instance_unprotected_group(k, ordered_value_assignments, sens_attribute, dec_attribute):
     number_of_neighbours = 0
     index = 0
     unprotected_nearest_neighbours_lables = []
     while(number_of_neighbours < k):
         instances = ordered_value_assignments[index]
-        # protected_neighbours = instances[instances[sens_attribute] == protected_label]
-        unprotected_neighbours = instances[instances[sens_attribute] == unprotected_label]
+        # protected_neighbours = instances[instances[sens_attribute] == 1]
+        unprotected_neighbours = instances[instances[sens_attribute] == 2]
         amount_of_selected_neighbours = min(k-number_of_neighbours, len(unprotected_neighbours))
         unprotected_nearest_neighbours_lables.extend(unprotected_neighbours[dec_attribute].iloc[0:amount_of_selected_neighbours].values)
         number_of_neighbours += amount_of_selected_neighbours
@@ -193,19 +206,37 @@ def decision_label_one_instance_unprotected_group(k, ordered_value_assignments, 
     ratio_of_positive_class_labels_neighbours = sum(unprotected_nearest_neighbours_lables)/k
     ratio_of_negative_class_labels_neighbours = 1 - ratio_of_positive_class_labels_neighbours
     decision_score = (ratio_of_positive_class_labels_neighbours - ratio_of_negative_class_labels_neighbours)
-
     return decision_score
 
 
-def give_discrimination_scores_zhang(model, sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_label, unprotected_label):
+def sensitive_label_one_instance(k, ordered_value_assignments, sens_attribute, dec_attribute):
+    number_of_neighbours = 0
+    index = 0
+    nearest_neighbours_gender_lables = []
+    while(number_of_neighbours < k):
+        instances = ordered_value_assignments[index]
+        amount_of_selected_neighbours = min(k-number_of_neighbours, len(instances))
+        nearest_neighbours_gender_lables.extend(instances[sens_attribute].sample(amount_of_selected_neighbours))
+        # nearest_neighbours_gender_lables.extend(instances[sens_attribute].iloc[0:amount_of_selected_neighbours].values)
+        number_of_neighbours += amount_of_selected_neighbours
+        index += 1
+    nearest_neighbours_gender_lables = np.array(nearest_neighbours_gender_lables)
+    ratio_of_unprotected_neighbours = len(nearest_neighbours_gender_lables[np.where(nearest_neighbours_gender_lables==2)])/k
+    # print(ratio_of_protected_neighbours)
+    if (ratio_of_unprotected_neighbours >= 0.5):
+        return 2
+    return 1
+
+
+
+def give_discrimination_scores_zhang(model, sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_indices, org_train_data=[]):
     model.fit(train_data, estimator=BayesianEstimator)
     cpd_decision = model.get_cpds(decision_attribute)
     cpd_sens = model.get_cpds(sens_attribute)
     Q, value_assignments = find_Q_value_assignments(model, sens_attribute, decision_attribute, train_data)
     instances_per_value_assignment = add_instances_to_value_assignments(value_assignments, train_data)
 
-    protected_instances_test_set = test_data[sens_attribute] == protected_label
-    protected_data_test = test_data[protected_instances_test_set]
+    protected_data_test = test_data.iloc[protected_indices]
 
     disc_scores = []
     for i in range(len(protected_data_test)):
@@ -215,10 +246,10 @@ def give_discrimination_scores_zhang(model, sens_attribute, decision_attribute, 
             distances = define_distances(Q, protected_data_test.iloc[i], value_assignments, instances_per_value_assignment, cpd_decision,
                                          cpd_sens, indices_info, range_dict, sens_attribute, decision_attribute)
             ordered_value_assignments = order_distances(instances_per_value_assignment, distances)
-            disc_score = disc_score_one_instance_1k(k, ordered_value_assignments, sens_attribute, decision_attribute, protected_label, unprotected_label)
+            disc_score = disc_score_one_instance_1k(k, ordered_value_assignments, sens_attribute, decision_attribute, indices_info, org_train_data)
             disc_scores.append(disc_score)
-
     return disc_scores
+
 
 def give_decision_labels_zhang_unprotected_group(model, sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_label, unprotected_label):
     model.fit(train_data, estimator=BayesianEstimator)
@@ -232,20 +263,50 @@ def give_decision_labels_zhang_unprotected_group(model, sens_attribute, decision
 
     predictions_negative_class = []
     predictions_positive_class = []
+    all_predictions = []
+    actual_decision_labels = []
     for i in range(len(unprotected_data_test)):
         unprotected_test_instance = unprotected_data_test.iloc[i]
         distances = define_distances(Q, unprotected_test_instance, value_assignments, instances_per_value_assignment, cpd_decision,
                                      cpd_sens, indices_info, range_dict, sens_attribute, decision_attribute)
         ordered_value_assignments = order_distances(instances_per_value_assignment, distances)
-        decision_score = decision_label_one_instance_unprotected_group(k, ordered_value_assignments, sens_attribute, decision_attribute, protected_label, unprotected_label)
+        decision_score = decision_label_one_instance_unprotected_group(k, ordered_value_assignments, sens_attribute, decision_attribute)
         #als het goed is zit in unprotected_test_instance het decision label
         actual_decision_label = unprotected_test_instance[decision_attribute]
+        all_predictions.append(decision_score>=0.5)
+        actual_decision_labels.append(actual_decision_label)
         if (actual_decision_label == 1):
             predictions_positive_class.append(decision_score)
         else:
             predictions_negative_class.append(decision_score)
-
+    print(accuracy_score(actual_decision_labels, all_predictions))
     return predictions_negative_class, predictions_positive_class
+
+
+
+def predict_sens_attribute_zhang(model, sens_attribute, decision_attribute, train_data, test_data, k, indices_info, range_dict, protected_label, unprotected_label):
+    model.fit(train_data, estimator=BayesianEstimator)
+    cpd_decision = model.get_cpds(decision_attribute)
+    cpd_sens = model.get_cpds(sens_attribute)
+    Q, value_assignments = find_Q_value_assignments(model, sens_attribute, decision_attribute, train_data)
+    instances_per_value_assignment = add_instances_to_value_assignments(value_assignments, train_data)
+
+    all_predictions = []
+    actual_gender_labels = []
+    for i in range(len(test_data)):
+        test_instance = test_data.iloc[i]
+        distances = define_distances(Q, test_instance, value_assignments, instances_per_value_assignment, cpd_decision,
+                                     cpd_sens, indices_info, range_dict, sens_attribute, decision_attribute)
+        ordered_value_assignments = order_distances(instances_per_value_assignment, distances)
+        gender_label = sensitive_label_one_instance(k, ordered_value_assignments, sens_attribute, decision_attribute)
+        #als het goed is zit in unprotected_test_instance het decision label
+        actual_gender = test_instance[sens_attribute]
+        all_predictions.append(gender_label)
+        actual_gender_labels.append(actual_gender)
+
+
+    print(accuracy_score(actual_gender_labels, all_predictions))
+    return
 
 
 

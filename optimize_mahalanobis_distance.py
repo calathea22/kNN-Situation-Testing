@@ -9,34 +9,30 @@ from numpy.linalg import norm, cholesky
 
 
 #This function gives the mahalanobis distance between two instances x and y
-def mahalanobis_distance(x, y, weights, indices_info):
+def squared_mahalanobis_distance(x, y, weights, indices_info):
     # weight_matrix = np.reshape(weight_array, (len(x), len(x)))
     difference = give_non_abs_difference_vector_between_instances(x, y, indices_info)
     transposed_difference = np.transpose(difference)
     dot_product1 = np.matmul(transposed_difference, weights)
     distance = np.matmul(dot_product1, difference)
-    if (distance - 0.0 < 1e-9):
-        return 0.0
-    return math.sqrt(distance)
+    return distance
     # return math.sqrt(np.matmul(dot_product1, abs_difference))
 
 
-def mahalanobis_distance_given_diff(diff, weight_matrix):
+def squared_mahalanobis_distance_given_diff(diff, weight_matrix):
     transposed_difference = np.transpose(diff)
     dot_product1 = np.matmul(transposed_difference, weight_matrix)
     distance = np.matmul(dot_product1, diff)
-    if (distance - 0.0 < 1e-9):
-        return 0.0
-    return math.sqrt(distance)
+    return distance
 
 
 def objective_mahalanobis(weights, protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm):
     prot_dist_diff, prot_dist_same = calc_distances_within_and_between_classes(protected_labels, protected_data,
                                                                                weights, indices_info,
-                                                                               mahalanobis_distance)
+                                                                               squared_mahalanobis_distance)
     unprot_dist_diff, unprot_dist_same = calc_distances_within_and_between_classes(unprotected_labels, unprotected_data,
                                                                                    weights, indices_info,
-                                                                                   mahalanobis_distance)
+                                                                                   squared_mahalanobis_distance)
 
     mean_prot_dist_diff = sum(prot_dist_diff) / len(prot_dist_diff)
     mean_prot_dist_same = sum(prot_dist_same) / len(prot_dist_same)
@@ -44,7 +40,7 @@ def objective_mahalanobis(weights, protected_data, unprotected_data, protected_l
     mean_unprot_dist_diff = sum(unprot_dist_diff) / len(unprot_dist_diff)
     mean_unprot_dist_same = sum(unprot_dist_same) / len(unprot_dist_same)
 
-    l1_norm = lambda_l1_norm * sum(sum(abs(weights)))
+    l1_norm = lambda_l1_norm * sum(sum(weights**2))
     sum_of_mean_of_dist_diffs = mean_prot_dist_diff + mean_unprot_dist_diff
     sum_of_mean_of_dist_same = mean_prot_dist_same + mean_unprot_dist_same
 
@@ -60,13 +56,8 @@ def make_mahalanobis_derivative_per_label_group(number_of_attributes, label_grou
         for j in range(number_of_attributes):
             sum_of_elements = 0
             for element in range(len(label_group)):
-                mahalanobis_distance = mahalanobis_distance_given_diff(label_group[element], weightarray)
-                if mahalanobis_distance != 0:
-                    sum_of_elements += ((1/(2*mahalanobis_distance)) * label_group[element][i] * label_group[element][j])
-            if(weightarray[i][j] > 0):
-                derivative_vector.append(sum_of_elements + lambda_l1_norm)
-            else:
-                derivative_vector.append(sum_of_elements - lambda_l1_norm)
+                sum_of_elements += label_group[element][i] * label_group[element][j]
+            derivative_vector.append(sum_of_elements)
     return derivative_vector
 
 
@@ -89,29 +80,12 @@ def mahalanobis_derivative(weights, protected_data, unprotected_data, protected_
 
     derivative = -(sum_derivative_same - sum_derivative_diff)
     derivative = np.reshape(derivative, (len(weights), len(weights)))
+
+    for i in range(len(protected_data[0])):
+        for j in range(len(protected_data[0])):
+            derivative[i][j] += 2*weights[i][j] * lambda_l1_norm
+
     return derivative
-
-
-
-def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, protected_label, unprotected_label):
-    protected_labels = class_label[np.where(protected_attribute == protected_label)]
-    unprotected_labels = class_label[np.where(protected_attribute == unprotected_label)]
-
-    protected_data = data[np.where(protected_attribute == protected_label)]
-    unprotected_data = data[np.where(protected_attribute == unprotected_label)]
-
-    initial_weights = [0.1] * (len(data[0])*len(data[0]))
-
-    b = (0.0, float('inf'))
-    bds = [b] * (len(data[0])*len(data[0]))
-
-    lambda_l1_norm = 0.1
-
-    sol = minimize(objective_mahalanobis, initial_weights, (protected_data, unprotected_data, protected_labels, unprotected_labels, indices_info, lambda_l1_norm),
-                   jac=mahalanobis_derivative, bounds=bds)
-
-    return sol['x']
-
 
 
 def optimize_mahalanobis(data, class_label, protected_attribute, indices_info, protected_label, unprotected_label, lambda_l1_norm):

@@ -17,12 +17,14 @@ def get_doubtful_cases(probability_labels, n_biased, class_labels):
     discriminated_instances = []
     biased_counter = 0
     index_counter = 0
+    #index_counter = 236
     while biased_counter<n_biased:
         index = sorted_probability_labels['Index'].iloc[index_counter]
         if class_labels[index] == 1:
             discriminated_instances.append(index)
             biased_counter+=1
         index_counter+=1
+
     return discriminated_instances
 
 

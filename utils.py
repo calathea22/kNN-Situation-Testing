@@ -20,6 +20,32 @@ def store_in_excel(matrix, path, filename):
     # dataframe.to_excel(excel_writer=path)
     return
 
+
+def give_description_of_nearest_neighbours(neighbour_data, data_of_instance_in_question, indices_info):
+    for interval_index in indices_info['interval']:
+        column_name = neighbour_data.columns[interval_index]
+        column_from_data = neighbour_data.iloc[:, interval_index]
+        print(column_name)
+        print("Value of instance on this feature: " + str(data_of_instance_in_question.iloc[interval_index]))
+        print("Mean value of neighbours for this feature: " + str(column_from_data.mean()))
+        print("Standard deviation of neighbours for this feature: " + str(column_from_data.std()))
+
+    # column_name = neighbour_data.columns[1]
+    # column_from_data = neighbour_data.iloc[:, 1]
+    # print(column_name)
+    # print("Value of instance on this feature: " + str(data_of_instance_in_question.iloc[1]))
+    # print("Mean value of neighbours for this feature: " + str(column_from_data.mean()))
+
+    for ordinal_index in indices_info['ordinal']:
+
+        column_name = neighbour_data.columns[ordinal_index]
+        print(column_name)
+        column_from_data = neighbour_data.iloc[:, ordinal_index]
+        print("Value of instance on this feature: " + str(data_of_instance_in_question.iloc[ordinal_index]))
+        print(neighbour_data.groupby(column_name).count())
+
+
+
 def give_separate_correlations(attribute, protected_class, dataset, variables_info, protected_label, unprotected_label):
     protected_indices = list(np.where(protected_class == protected_label)[0])
     unprotected_indices = list(np.where(protected_class == unprotected_label)[0])
@@ -41,10 +67,10 @@ def give_separate_correlations(attribute, protected_class, dataset, variables_in
     return
 
 
-def discriminated_instances_to_label_array(all_protected, instances):
+def discriminated_instances_to_label_array(all_protected, discriminated_instances):
     label_array = []
     for i in range(len(all_protected)):
-        label_array.append(all_protected[i] in list(instances))
+        label_array.append(all_protected[i] in list(discriminated_instances))
     return label_array
 
 
@@ -178,14 +204,29 @@ def generate_non_discriminated_class_info(ground_truth_labels, protected_info, c
     return new_class_labels
 
 
-def remove_discrimination_from_protected_indices(discrimination_labels, biased_class_labels):
+# def remove_discrimination_from_protected_indices(discrimination_labels, biased_class_labels):
+#     new_class_labels = []
+#     for i in range(len(biased_class_labels)):
+#         if i<len(discrimination_labels):
+#             if discrimination_labels[i] == True:
+#                 new_class_labels.append(True)
+#         else:
+#             new_class_labels.append(biased_class_labels.iloc[i])
+#     return new_class_labels
+
+def remove_discrimination_from_protected_indices(discrimination_labels, biased_class_labels, protected_indices):
     new_class_labels = []
+    protected_index_counter = 0
     for i in range(len(biased_class_labels)):
-        if discrimination_labels[i] == True:
-            new_class_labels.append(True)
-        else:
+        if i not in protected_indices:
             new_class_labels.append(biased_class_labels.iloc[i])
+        else:
+            new_class_labels.append(discrimination_labels[protected_index_counter])
+            protected_index_counter += 1
     return new_class_labels
+
+
+
 
 def get_inter_and_intra_sens_distances(distances, sens_attribute, prot_label):
     inter_prot = []

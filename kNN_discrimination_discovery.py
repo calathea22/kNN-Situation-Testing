@@ -1,8 +1,9 @@
 from scipy.spatial.distance import cdist
-from optimize_euclidean_distances import weighted_euclidean_distance, luong_distance
-from optimize_mahalanobis_distances import mahalanobis_distance
 import pandas as pd
 import numpy as np
+from sklearn.metrics import accuracy_score
+import utils
+from optimize_distances_utils import weighted_euclidean_distance, luong_distance, mahalanobis_distance
 
 
 def make_distance_row_luong(training_set, instance, indices_info):
@@ -23,18 +24,6 @@ def find_2k_nearest_neighbors_Luong(k, instance, training_set, protected_indices
     unprotected_neighbours = (unprotected_instances.iloc[unprotected_neighbours_idx[:k]])
 
     return (protected_neighbours, unprotected_neighbours)
-
-
-# def find_k_nearest_unprotected_neighbors_Luong(k, instance, training_set, unprotected_indices, indices_info):
-#     distance_row = pd.Series(make_distance_row_luong(training_set, instance, indices_info))
-#
-#     unprotected_instances = distance_row.iloc[unprotected_indices]
-#
-#     unprotected_neighbours_idx = np.argpartition(unprotected_instances, k)
-#
-#     nearest_unprotected_neighbours = (unprotected_instances.iloc[unprotected_neighbours_idx[:k]])
-#
-#     return nearest_unprotected_neighbours
 
 
 def calc_difference(protected_neighbours, unprotected_neighbours, class_info):
@@ -92,15 +81,13 @@ def give_decision_labels_unprotected_group(k, class_info_train, unprotected_indi
 
     test_class_info_unprotected = class_info_test.iloc[unprotected_indices_test].reset_index(drop=True)
     predicted_scores_test = np.array(predicted_scores_test)
+    predicted_labels_test = predicted_scores_test>=0.5
 
     negative_class_indices_test = np.where(test_class_info_unprotected==0)[0]
     positive_class_indices_test = np.where(test_class_info_unprotected==1)[0]
     predictions_negative_class = predicted_scores_test[negative_class_indices_test]
-    print(predictions_negative_class)
     predictions_positive_class = predicted_scores_test[positive_class_indices_test]
-    print(predictions_positive_class)
 
-    #print("Accuracy score: " + str(accuracy_score(test_class_info_unprotected, predicted_labels_test)))
     return predictions_negative_class, predictions_positive_class
 
 
@@ -178,29 +165,7 @@ def give_all_disc_scores_mahalanobis_2k_approach(k, class_info_train, protected_
 
 
 
-def give_Lenders_disc_score_with_reject_option(k, epsilon, class_info_train, unprotected_indices_train, training_set, protected_indices_test, class_info_test, test_set, indices_info, distance_function, weights):
-    discrimination_scores = []
-    rejected_indices = []
-    train_set_unprotected = training_set.iloc[unprotected_indices_train].reset_index(drop=True)
-    train_class_info_unprotected = class_info_train.iloc[unprotected_indices_train].reset_index(drop=True)
-    for protected_instance in protected_indices_test:
-        test_instance = test_set.iloc[protected_instance]
-        if class_info_test.iloc[protected_instance] == 0:
-            nearest_unprotected_neighbours_and_their_distances, distance_to_closest_neighbour = find_k_nearest_unprotected_neighbors(k, test_instance,
-                                                                train_set_unprotected, indices_info, distance_function, weights)
-            if (distance_to_closest_neighbour >= epsilon):
-                discrimination_scores.append(-1000)
-                rejected_indices.append(test_instance.name)
-            else:
-                class_nearest_neighbours = train_class_info_unprotected.iloc[nearest_unprotected_neighbours_and_their_distances.index]
-                discrimination_score = sum(class_nearest_neighbours) / len(class_nearest_neighbours)
-                discrimination_scores.append(discrimination_score)
-        else:
-            discrimination_scores.append(-1)
-    return discrimination_scores, rejected_indices
-
-
-def give_Lenders_disc_score_without_reject_option(k, class_info_train, unprotected_indices_train, training_set, protected_indices_test, class_info_test, test_set, indices_info, distance_function, weights):
+def give_disc_score_k_approach(k, class_info_train, unprotected_indices_train, training_set, protected_indices_test, class_info_test, test_set, indices_info, distance_function, weights):
     discrimination_scores = []
     train_set_unprotected = training_set.iloc[unprotected_indices_train].reset_index(drop=True)
     train_class_info_unprotected = class_info_train.iloc[unprotected_indices_train].reset_index(drop=True)
@@ -210,7 +175,35 @@ def give_Lenders_disc_score_without_reject_option(k, class_info_train, unprotect
         if class_info_test.iloc[protected_instance] == 0:
             nearest_unprotected_neighbours_and_their_distances, distance_to_closest_neighbour = find_k_nearest_unprotected_neighbors(k, test_instance,
                                                                 train_set_unprotected, indices_info, distance_function, weights)
+
             class_nearest_neighbours = train_class_info_unprotected.iloc[nearest_unprotected_neighbours_and_their_distances.index]
+            discrimination_score = sum(class_nearest_neighbours) / len(class_nearest_neighbours)
+            discrimination_scores.append(discrimination_score)
+            distances_to_closest_neighbour.append(distance_to_closest_neighbour)
+        else:
+            discrimination_scores.append(-1)
+    return discrimination_scores, distances_to_closest_neighbour
+
+
+
+def give_k_disc_score_with_info_about_nearest_neighbours(k, class_info_train, unprotected_indices_train, standardized_training_set, training_set, protected_indices_test, class_info_test, standardized_test_set, test_set, indices_info, distance_function, weights):
+    discrimination_scores = []
+
+    standardized_train_set_unprotected = standardized_training_set.iloc[unprotected_indices_train].reset_index(drop=True)
+    train_class_info_unprotected = class_info_train.iloc[unprotected_indices_train].reset_index(drop=True)
+    training_set_unprotected = training_set.iloc[unprotected_indices_train].reset_index(drop=True)
+
+    distances_to_closest_neighbour = []
+    for protected_index in protected_indices_test:
+        test_instance = standardized_test_set.iloc[protected_index]
+        if class_info_test.iloc[protected_index] == 0:
+            nearest_unprotected_neighbours_and_their_distances, distance_to_closest_neighbour = find_k_nearest_unprotected_neighbors(k, test_instance,
+                                                                standardized_train_set_unprotected, indices_info, distance_function, weights)
+
+            class_nearest_neighbours = train_class_info_unprotected.iloc[nearest_unprotected_neighbours_and_their_distances.index]
+            non_standardized_data_neighbours = training_set_unprotected.iloc[nearest_unprotected_neighbours_and_their_distances.index]
+            utils.give_description_of_nearest_neighbours(non_standardized_data_neighbours, test_set.iloc[protected_index], indices_info)
+
             discrimination_score = sum(class_nearest_neighbours) / len(class_nearest_neighbours)
             discrimination_scores.append(discrimination_score)
             distances_to_closest_neighbour.append(distance_to_closest_neighbour)
