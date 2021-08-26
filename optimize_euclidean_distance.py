@@ -43,6 +43,7 @@ def objective_weighted_euclidean(weights, protected_data, unprotected_data, prot
     mean_unprot_dist_diff = sum(unprot_dist_diff) / len(unprot_dist_diff)
     mean_unprot_dist_same = sum(unprot_dist_same) / len(unprot_dist_same)
 
+    #is changed to l1_norm in final version
     l2_norm = lambda_l2_norm * sum(weights ** 2)
 
     sum_of_mean_of_dist_diffs = mean_prot_dist_diff + mean_unprot_dist_diff
@@ -82,6 +83,7 @@ def euclidean_derivative(weights, protected_data, unprotected_data, protected_la
 
     derivative = (sum_derivative_same - sum_derivative_diff)
 
+    #is changed to l1 norm in final version
     for i in range(len(weights)):
         derivative[i] += 2 * lambda_l2_norm * weights[i]
 
